@@ -2,9 +2,11 @@ const http = require("node:http");
 const { randomUUID } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
+const { cases } = require("./cases");
 
 const PORT = Number(process.env.PORT || 3000);
 const rooms = new Map();
+const DIFFICULTIES = new Set(["easy", "medium", "hard"]);
 const ROUND_SECONDS = { discuss: 75, vote: 35, reveal: 20 };
 
 const scenarios = [
@@ -62,6 +64,7 @@ function publicRoom(room, playerId) {
     roomCode: room.code,
     phase,
     hostId: room.hostId,
+    difficulty: room.difficulty,
     me: player ? { id: player.id, name: player.name } : null,
     players: [...room.players.values()].map(({ id, name }) => ({ id, name })),
     round: room.round,
@@ -69,11 +72,14 @@ function publicRoom(room, playerId) {
     scenario: room.scenario && {
       title: room.scenario.title,
       setting: room.scenario.setting,
-      truth: phase === "reveal" ? room.scenario.truth : null
+      theories: phase === "vote" || phase === "reveal" ? room.scenario.theories : [],
+      truth: phase === "reveal" ? room.scenario.truth : null,
+      deceiverBrief: room.deceiverId === playerId && (phase === "discuss" || phase === "vote") ? room.scenario.deceiverBrief : null
     },
     clue: phase === "discuss" || phase === "vote" ? room.clues.get(playerId) || null : null,
     role: phase === "discuss" || phase === "vote" ? (room.deceiverId === playerId ? "DECEIVER" : "INVESTIGATOR") : null,
-    votes: phase === "reveal" ? [...room.votes.entries()].map(([voter, target]) => ({ voter, target })) : [],
+    votes: phase === "reveal" ? [...room.votes.entries()].map(([voter, answer]) => ({ voter, ...answer })) : [],
+    deceiverId: phase === "reveal" ? room.deceiverId : null,
     score: Object.fromEntries(room.scores),
     message: room.message || null
   };
@@ -108,7 +114,11 @@ function setPhase(room, phase) {
 function startRound(room) {
   if (room.players.size < 3) throw new Error("FEARBOUND needs at least 3 players to begin.");
   room.round += 1;
-  room.scenario = scenarios[(room.round - 1) % scenarios.length];
+  const pool = cases.filter(scenario => scenario.difficulty === room.difficulty);
+  if (room.usedCaseIds.size === pool.length) room.usedCaseIds.clear();
+  const availableCases = pool.filter(scenario => !room.usedCaseIds.has(scenario.id));
+  room.scenario = availableCases[Math.floor(Math.random() * availableCases.length)];
+  room.usedCaseIds.add(room.scenario.id);
   const players = [...room.players.keys()];
   room.deceiverId = players[Math.floor(Math.random() * players.length)];
   room.votes = new Map();
@@ -121,15 +131,20 @@ function reveal(room) {
   clearTimer(room);
   room.phase = "reveal";
   room.endsAt = Date.now() + ROUND_SECONDS.reveal * 1000;
-  const accused = [...room.votes.values()].filter(Boolean);
+  const accused = [...room.votes.values()].map(answer => answer.targetId).filter(Boolean);
   const counts = accused.reduce((result, id) => ({ ...result, [id]: (result[id] || 0) + 1 }), {});
   const mostVoted = Object.entries(counts).sort(([, a], [, b]) => b - a)[0]?.[0];
-  const investigatorsWin = mostVoted === room.deceiverId;
+  const selectedTheories = [...room.votes.values()].map(answer => answer.theoryId);
+  const theoryCounts = selectedTheories.reduce((result, theoryId) => ({ ...result, [theoryId]: (result[theoryId] || 0) + 1 }), {});
+  const groupTheory = Number(Object.entries(theoryCounts).sort(([, first], [, second]) => second - first)[0]?.[0]);
+  const investigatorsWin = mostVoted === room.deceiverId && groupTheory === room.scenario.truthTheory;
   for (const id of room.players.keys()) {
     const current = room.scores.get(id) || 0;
-    room.scores.set(id, current + (id === room.deceiverId ? (investigatorsWin ? 0 : 2) : (investigatorsWin ? 1 : 0)));
+    const answer = room.votes.get(id);
+    const investigatorPoints = Number(answer?.targetId === room.deceiverId) + Number(answer?.theoryId === room.scenario.truthTheory);
+    room.scores.set(id, current + (id === room.deceiverId ? (investigatorsWin ? 0 : 2) : investigatorPoints));
   }
-  room.message = investigatorsWin ? "The investigators exposed the Deceiver." : "The Deceiver escaped suspicion.";
+  room.message = investigatorsWin ? "The investigators solved the case and exposed the Deceiver." : "The Deceiver kept the truth buried.";
   room.timer = setTimeout(() => resetToLobby(room), ROUND_SECONDS.reveal * 1000);
   broadcast(room);
 }
@@ -167,8 +182,10 @@ async function api(request, response) {
   const body = await readJson(request);
   if (request.url === "/api/rooms" && request.method === "POST") {
     const name = String(body.name || "").trim().slice(0, 24);
+    const difficulty = String(body.difficulty || "easy");
     if (!name) throw new Error("Enter a name first.");
-    const room = { code: code(), hostId: randomUUID(), players: new Map(), clients: new Map(), phase: "lobby", round: 0, scores: new Map(), clues: new Map(), votes: new Map(), timer: null, endsAt: null };
+    if (!DIFFICULTIES.has(difficulty)) throw new Error("Choose a case difficulty.");
+    const room = { code: code(), hostId: randomUUID(), players: new Map(), clients: new Map(), phase: "lobby", round: 0, difficulty, scores: new Map(), clues: new Map(), votes: new Map(), usedCaseIds: new Set(), timer: null, endsAt: null };
     room.players.set(room.hostId, { id: room.hostId, name });
     room.scores.set(room.hostId, 0);
     rooms.set(room.code, room);
@@ -195,8 +212,10 @@ async function api(request, response) {
   }
   if (request.url === "/api/vote" && request.method === "POST") {
     if (room.phase !== "vote") throw new Error("Voting has not started.");
+    const theoryId = Number(body.theoryId);
     if (!room.players.has(body.targetId) || body.targetId === body.playerId) throw new Error("Choose another player.");
-    room.votes.set(body.playerId, body.targetId);
+    if (!Number.isInteger(theoryId) || !room.scenario.theories[theoryId]) throw new Error("Choose a case theory.");
+    room.votes.set(body.playerId, { targetId: body.targetId, theoryId });
     if (room.votes.size === room.players.size) reveal(room); else send(room, body.playerId);
     return respond(response, 200, { ok: true });
   }
@@ -227,4 +246,4 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(PORT, () => console.log(`FEARBOUND is listening on http://localhost:${PORT}`));
+server.listen(PORT, "0.0.0.0", () => console.log(`FEARBOUND is listening on port ${PORT}`));

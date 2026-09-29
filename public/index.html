@@ -3,10 +3,11 @@
   <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FEARBOUND</title><link rel="stylesheet" href="styles.css"></head>
   <body>
     <main class="shell">
-      <header><p class="eyebrow">A social deduction mystery</p><h1>FEARBOUND</h1><p class="tagline">Who knows the truth?</p></header>
+      <header><p class="eyebrow">A social deduction mystery</p><h1>FEARBOUND</h1><p class="tagline">Who knows the truth?</p><button id="help" class="help" type="button">How to play</button></header>
       <section id="entry" class="card entry">
-        <h2>Enter the unknown</h2><p>3–8 players. Share a room code, compare your private clues, and uncover the Deceiver.</p>
+        <h2>Enter the unknown</h2><p>3–8 players. Compare private clues, solve the mystery, and uncover the Deceiver.</p>
         <label>Your name<input id="name" maxlength="24" placeholder="Detective name" autocomplete="nickname"></label>
+        <label class="difficulty">Host difficulty<select id="difficulty"><option value="easy">Easy · clear clues</option><option value="medium">Medium · connect the details</option><option value="hard">Hard · trust nothing</option></select></label>
         <div class="entry-actions"><button id="create">Create a room</button><span>or</span><label>Room code<input id="room-code" maxlength="4" placeholder="ABCD" autocapitalize="characters"></label><button id="join" class="secondary">Join room</button></div>
         <p id="error" class="error" role="alert"></p>
       </section>
@@ -16,6 +17,7 @@
         <aside class="card roster"><h2>In the room</h2><div id="players"></div></aside>
       </section>
     </main>
+    <dialog id="rules"><button id="close-rules" class="close" type="button" aria-label="Close instructions">×</button><p class="eyebrow">How to play</p><h2>Find the truth. Expose the lie.</h2><ol><li>Join a room with 3–8 players. The host selects the difficulty and begins.</li><li>Read your private clue. One player is secretly the Deceiver and receives a false theory.</li><li>Discuss the clues. Investigators work out what happened; the Deceiver tries to redirect them.</li><li>Before time runs out, choose the true theory and accuse the Deceiver.</li><li>Investigators earn one point for each correct choice. The Deceiver earns two points if the group fails to solve the case and expose them.</li></ol></dialog>
     <script src="app.js"></script>
   </body>
 </html>
