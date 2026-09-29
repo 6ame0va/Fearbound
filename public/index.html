@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FEARBOUND</title><link rel="stylesheet" href="styles.css"></head>
+  <body>
+    <main class="shell">
+      <header><p class="eyebrow">A social deduction mystery</p><h1>FEARBOUND</h1><p class="tagline">Who knows the truth?</p></header>
+      <section id="entry" class="card entry">
+        <h2>Enter the unknown</h2><p>3–8 players. Share a room code, compare your private clues, and uncover the Deceiver.</p>
+        <label>Your name<input id="name" maxlength="24" placeholder="Detective name" autocomplete="nickname"></label>
+        <div class="entry-actions"><button id="create">Create a room</button><span>or</span><label>Room code<input id="room-code" maxlength="4" placeholder="ABCD" autocapitalize="characters"></label><button id="join" class="secondary">Join room</button></div>
+        <p id="error" class="error" role="alert"></p>
+      </section>
+      <section id="game" hidden>
+        <div class="topbar"><div><p class="eyebrow">Room</p><strong id="room-display"></strong></div><div id="timer" class="timer"></div></div>
+        <section id="content" class="card"></section>
+        <aside class="card roster"><h2>In the room</h2><div id="players"></div></aside>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
